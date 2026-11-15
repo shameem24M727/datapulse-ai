@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+ENV/
+env/
+*.egg-info/
+
+# Production build outputs
+dist/
+build/
+*.pyc
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment and sensitive credential files
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+*.pem
+*.key
+
+# Local databases and runtime persistence
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+datapulse.db
+datapulse.db-shm
+datapulse.db-wal
+backend/datapulse.db
+test_*.db*
+
+# User uploads and temporary files
+uploads/
+backend/uploads/
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
