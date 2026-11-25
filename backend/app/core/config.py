@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import List, Optional
+from pydantic import field_validator
+from typing import List, Optional, Union
 import os
 
 class Settings(BaseSettings):
@@ -11,11 +12,33 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "https://datapulse-ai-zeta.vercel.app",
     ]
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return v
+        return []
 
     # Database
     DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/datapulse_ai"
     SQLITE_FALLBACK_URL: str = "sqlite:///./datapulse.db"
+
+    # Seeding & Demo Configuration
+    SEED_DEMO_USERS: bool = False
+    ADMIN_INITIAL_PASSWORD: Optional[str] = None
+    DEMO_ENGINEER_PASSWORD: Optional[str] = None
+    DEMO_VIEWER_PASSWORD: Optional[str] = None
 
     # Ingestion
     MAX_UPLOAD_SIZE_MB: int = 50

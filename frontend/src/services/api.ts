@@ -14,7 +14,28 @@ import type {
   AuthTokens,
 } from '../types';
 
-const API_BASE = '/api/v1';
+const BACKEND_URL = (
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? 'https://datapulse-ai-backend.onrender.com' : '')
+).replace(/\/+$/, '');
+
+const API_BASE = BACKEND_URL ? `${BACKEND_URL}/api/v1` : '/api/v1';
+
+export function getBackendBaseUrl(): string {
+  return BACKEND_URL;
+}
+
+export function getWebSocketUrl(path: string): string {
+  const token = getAccessToken();
+  const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (BACKEND_URL) {
+    const wsBase = BACKEND_URL.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    return `${wsBase}${cleanPath}${tokenQuery}`;
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}${cleanPath}${tokenQuery}`;
+}
 
 // ── Token Storage & Authenticated Fetch Wrapper ──────────────────────────────
 

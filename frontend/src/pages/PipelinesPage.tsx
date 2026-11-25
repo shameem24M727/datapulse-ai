@@ -58,7 +58,7 @@ import {
   acknowledgeAlert,
   resolveAlert,
   checkPipelineHealth,
-  getAccessToken,
+  getWebSocketUrl,
 } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -179,11 +179,7 @@ export default function PipelinesPage() {
 
     setConnectionStatus('connecting');
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const token = getAccessToken();
-    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
-    // Use window.location.host so Vite proxy /api or live server works automatically
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/pipelines/${pipelineId}/ws${tokenQuery}`;
+    const wsUrl = getWebSocketUrl(`/api/v1/pipelines/${pipelineId}/ws`);
 
     try {
       const ws = new WebSocket(wsUrl);
