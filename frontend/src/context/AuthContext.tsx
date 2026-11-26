@@ -42,9 +42,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadUserData = useCallback(async () => {
+  const loadUserData = useCallback(async (rethrowOnError = false) => {
     try {
       const token = getAccessToken();
+      console.debug('[Auth] loadUserData started', { hasToken: Boolean(token) });
       if (!token) {
         setIsLoading(false);
         return;
@@ -53,41 +54,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchCurrentUser(),
         fetchUserOrganizations(),
       ]);
+      console.debug('[Auth] Profile and organizations loaded', {
+        profileLoaded: Boolean(userData?.id),
+        orgCount: orgsData.length,
+      });
       setUser(userData);
       setOrganizations(orgsData);
 
-      // Set active org based on default_organization_id or first available
+      // Set active org based on active_organization_id, default_organization_id, or first available
       if (orgsData.length > 0) {
-        const preferred = orgsData.find(o => o.id === userData.default_organization_id) || orgsData[0];
+        const targetOrgId = userData.active_organization_id || userData.default_organization_id;
+        const preferred = orgsData.find(o => o.id === targetOrgId) || orgsData[0];
         setActiveOrg(preferred);
       }
       setError(null);
+      console.debug('[Auth] Authentication state updated', { isAuthenticated: true });
     } catch (err: any) {
-      console.warn('Authentication validation failed:', err);
-      clearTokens();
+      const message = err?.message || 'Unable to verify your session.';
+      const status = err?.status;
+      console.warn('[Auth] Authentication validation failed:', message);
+      // Only discard stored tokens when the server explicitly rejects them (401/403).
+      // For cold-start timeouts or temporary network outages, preserve tokens so a retry/refresh can restore the session.
+      if (status === 401 || status === 403) {
+        clearTokens();
+      }
       setUser(null);
       setActiveOrg(null);
       setOrganizations([]);
+      setError(message);
+      console.debug('[Auth] Authentication state reset', { isAuthenticated: false, tokenCleared: status === 401 || status === 403 });
+      if (rethrowOnError) {
+        throw err;
+      }
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadUserData();
+    let active = true;
+    const startupWatchdog = setTimeout(() => {
+      if (active) {
+        console.warn('[Auth] Startup session check exceeded 95s cold-start timeout; showing Login view.');
+        setIsLoading(false);
+      }
+    }, 95000);
+
+    loadUserData(false).finally(() => {
+      clearTimeout(startupWatchdog);
+    });
+
+    return () => {
+      active = false;
+      clearTimeout(startupWatchdog);
+    };
   }, [loadUserData]);
 
   const login = async (email: string, pass: string) => {
-    setIsLoading(true);
     setError(null);
     try {
+      console.debug('[Auth] Submitting login request');
       await loginUser(email, pass);
-      await loadUserData();
+      console.debug('[Auth] Login succeeded, loading user profile', { hasToken: Boolean(getAccessToken()) });
+      await loadUserData(true);
     } catch (err: any) {
-      setError(err.message || 'Login failed.');
+      const message = err?.message || 'Login failed.';
+      console.warn('[Auth] Login flow failed:', message);
+      setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -98,16 +132,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role?: string;
     organization_name?: string;
   }) => {
-    setIsLoading(true);
     setError(null);
     try {
+      console.debug('[Auth] Submitting registration request');
       await registerUser(payload);
-      await loadUserData();
+      await loadUserData(true);
     } catch (err: any) {
-      setError(err.message || 'Registration failed.');
+      const message = err?.message || 'Registration failed.';
+      console.warn('[Auth] Registration flow failed:', message);
+      setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 

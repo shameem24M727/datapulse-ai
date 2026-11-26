@@ -1,3 +1,4 @@
+import os
 import logging
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
@@ -7,20 +8,41 @@ logger = logging.getLogger("datapulse.db")
 
 active_db_type = "unknown"
 
+def _is_production_env() -> bool:
+    return (
+        os.getenv("RENDER", "").lower() == "true"
+        or os.getenv("ENVIRONMENT", "").lower() == "production"
+        or not settings.DEBUG
+    )
+
 def get_engine():
     global active_db_type
     primary_url = settings.DATABASE_URL
+    if primary_url.startswith("postgres://"):
+        primary_url = primary_url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif primary_url.startswith("postgresql://"):
+        primary_url = primary_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     try:
         # Attempt PostgreSQL connection check
         if primary_url.startswith("postgresql"):
-            eng = create_engine(primary_url, pool_pre_ping=True, connect_args={"connect_timeout": 3})
+            eng = create_engine(primary_url, pool_pre_ping=True, connect_args={"connect_timeout": 5})
             with eng.connect() as conn:
                 conn.execute(text("SELECT 1"))
             active_db_type = "postgresql"
             logger.info("Connected successfully to PostgreSQL database.")
             return eng
     except Exception as e:
-        logger.warning(f"PostgreSQL connection to {primary_url} failed ({e}). Falling back to local SQLite database.")
+        if _is_production_env():
+            logger.error(f"Production PostgreSQL connection failed ({type(e).__name__}). SQLite fallback is disabled in production.")
+            raise RuntimeError(
+                "Production PostgreSQL connection failed. Ephemeral SQLite fallback is disabled in production."
+            ) from e
+        logger.warning(f"PostgreSQL connection failed ({type(e).__name__}). Falling back to local SQLite database.")
+
+    if _is_production_env() and not primary_url.startswith("sqlite"):
+        raise RuntimeError(
+            "Production environment requires a valid PostgreSQL DATABASE_URL. Ephemeral SQLite fallback is disabled."
+        )
 
     # Local SQLite Fallback
     fallback_url = settings.SQLITE_FALLBACK_URL

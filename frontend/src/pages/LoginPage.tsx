@@ -7,7 +7,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
-  const { login } = useAuth();
+  const { login, error: authError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -64,10 +64,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Enter your credentials to access workspaces</p>
           </div>
 
-          {errorMessage && (
+          {(errorMessage || authError) && (
             <div className="mb-5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{errorMessage}</span>
+              <span>{errorMessage || authError}</span>
             </div>
           )}
 

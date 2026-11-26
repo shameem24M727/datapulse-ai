@@ -37,33 +37,102 @@ export function getWebSocketUrl(path: string): string {
   return `${protocol}//${window.location.host}${cleanPath}${tokenQuery}`;
 }
 
+// ── Safe Storage & Timeout Fetch Helpers ─────────────────────────────────────
+
+const AUTH_REQUEST_TIMEOUT_MS = 90000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 90000;
+
+function safeGetStorage(key: string): string | null {
+  try {
+    const val = localStorage.getItem(key);
+    if (!val || val === 'null' || val === 'undefined') {
+      return null;
+    }
+    return val;
+  } catch {
+    return null;
+  }
+}
+
+function safeSetStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage write errors (e.g. private browsing restrictions)
+  }
+}
+
+function safeRemoveStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage removal errors
+  }
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Respect any caller-provided abort signal as well
+  if (init?.signal) {
+    if (init.signal.aborted) {
+      controller.abort();
+    } else {
+      init.signal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error(
+        'Request timed out. The backend server may be starting up or temporarily unavailable. Please try again.'
+      );
+    }
+    throw new Error(
+      err?.message || 'Unable to reach the server. Please check your connection and try again.'
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ── Token Storage & Authenticated Fetch Wrapper ──────────────────────────────
 
-let inMemoryAccessToken: string | null = localStorage.getItem('datapulse_access_token');
-let inMemoryRefreshToken: string | null = localStorage.getItem('datapulse_refresh_token');
+let inMemoryAccessToken: string | null = safeGetStorage('datapulse_access_token');
+let inMemoryRefreshToken: string | null = safeGetStorage('datapulse_refresh_token');
 
 export function getAccessToken(): string | null {
-  return inMemoryAccessToken || localStorage.getItem('datapulse_access_token');
+  return inMemoryAccessToken || safeGetStorage('datapulse_access_token');
 }
 
 export function getRefreshToken(): string | null {
-  return inMemoryRefreshToken || localStorage.getItem('datapulse_refresh_token');
+  return inMemoryRefreshToken || safeGetStorage('datapulse_refresh_token');
 }
 
 export function setTokens(accessToken: string, refreshToken?: string | null) {
   inMemoryAccessToken = accessToken;
-  localStorage.setItem('datapulse_access_token', accessToken);
+  safeSetStorage('datapulse_access_token', accessToken);
   if (refreshToken) {
     inMemoryRefreshToken = refreshToken;
-    localStorage.setItem('datapulse_refresh_token', refreshToken);
+    safeSetStorage('datapulse_refresh_token', refreshToken);
   }
 }
 
 export function clearTokens() {
   inMemoryAccessToken = null;
   inMemoryRefreshToken = null;
-  localStorage.removeItem('datapulse_access_token');
-  localStorage.removeItem('datapulse_refresh_token');
+  safeRemoveStorage('datapulse_access_token');
+  safeRemoveStorage('datapulse_refresh_token');
 }
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -75,11 +144,15 @@ async function doRefreshToken(): Promise<string | null> {
     return null;
   }
   try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: rt }),
-    });
+    const res = await fetchWithTimeout(
+      `${API_BASE}/auth/refresh`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: rt }),
+      },
+      AUTH_REQUEST_TIMEOUT_MS
+    );
     if (!res.ok) {
       clearTokens();
       return null;
@@ -95,7 +168,11 @@ async function doRefreshToken(): Promise<string | null> {
   }
 }
 
-export async function authenticatedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export async function authenticatedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = AUTH_REQUEST_TIMEOUT_MS
+): Promise<Response> {
   let token = getAccessToken();
   const headers = new Headers(init?.headers || {});
 
@@ -103,10 +180,14 @@ export async function authenticatedFetch(input: RequestInfo | URL, init?: Reques
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  let res = await fetch(input, {
-    ...init,
-    headers,
-  });
+  let res = await fetchWithTimeout(
+    input,
+    {
+      ...init,
+      headers,
+    },
+    timeoutMs
+  );
 
   // If 401 Unauthorized, attempt a single refresh
   if (res.status === 401 && getRefreshToken()) {
@@ -117,10 +198,14 @@ export async function authenticatedFetch(input: RequestInfo | URL, init?: Reques
     if (newToken) {
       const retryHeaders = new Headers(init?.headers || {});
       retryHeaders.set('Authorization', `Bearer ${newToken}`);
-      res = await fetch(input, {
-        ...init,
-        headers: retryHeaders,
-      });
+      res = await fetchWithTimeout(
+        input,
+        {
+          ...init,
+          headers: retryHeaders,
+        },
+        timeoutMs
+      );
     }
   }
 
@@ -130,11 +215,16 @@ export async function authenticatedFetch(input: RequestInfo | URL, init?: Reques
 // ── Authentication & Organization APIs ───────────────────────────────────────
 
 export async function loginUser(email: string, password: string): Promise<AuthTokens> {
-  const res = await fetch(`${API_BASE}/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}/auth/login`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    },
+    AUTH_REQUEST_TIMEOUT_MS
+  );
+  console.debug('[API] POST /auth/login status:', res.status);
 
   if (!res.ok) {
     let errMessage = 'Invalid credentials. Please try again.';
@@ -147,6 +237,10 @@ export async function loginUser(email: string, password: string): Promise<AuthTo
 
   const data: AuthTokens = await res.json();
   setTokens(data.access_token, data.refresh_token);
+  console.debug('[API] Tokens stored after login:', {
+    hasAccessToken: Boolean(getAccessToken()),
+    hasRefreshToken: Boolean(getRefreshToken()),
+  });
   return data;
 }
 
@@ -157,11 +251,15 @@ export async function registerUser(payload: {
   role?: string;
   organization_name?: string;
 }): Promise<AuthTokens> {
-  const res = await fetch(`${API_BASE}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  const res = await fetchWithTimeout(
+    `${API_BASE}/auth/register`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+    AUTH_REQUEST_TIMEOUT_MS
+  );
 
   if (!res.ok) {
     let errMessage = 'Registration failed.';
@@ -194,16 +292,22 @@ export async function logoutUser(): Promise<void> {
 
 export async function fetchCurrentUser(): Promise<UserProfile> {
   const res = await authenticatedFetch(`${API_BASE}/auth/me`);
+  console.debug('[API] GET /auth/me status:', res.status);
   if (!res.ok) {
-    throw new Error(`Failed to fetch current user: ${res.statusText}`);
+    const err: any = new Error(`Failed to fetch current user (${res.status}): ${res.statusText}`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
 
 export async function fetchUserOrganizations(): Promise<Organization[]> {
   const res = await authenticatedFetch(`${API_BASE}/organizations/`);
+  console.debug('[API] GET /organizations/ status:', res.status);
   if (!res.ok) {
-    throw new Error(`Failed to fetch organizations: ${res.statusText}`);
+    const err: any = new Error(`Failed to fetch organizations (${res.status}): ${res.statusText}`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }

@@ -325,6 +325,7 @@ export interface UserProfile {
   role: 'admin' | 'data_engineer' | 'analyst' | 'viewer';
   is_active: boolean;
   default_organization_id?: string | null;
+  active_organization_id?: string | null;
   created_at: string;
   updated_at: string;
 }
