@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Activity, Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Activity, Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface LoginPageProps {
   onSwitchToRegister: () => void;
@@ -29,12 +29,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleQuickDemo = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setErrorMessage(null);
   };
 
   return (
@@ -133,37 +127,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onSwitchToRegister }) => {
               )}
             </button>
           </form>
-
-          {/* Quick presets for test evaluation */}
-          <div className="mt-6 pt-5 border-t border-zinc-200 dark:border-zinc-800/80">
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mb-2 font-medium flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
-              Demo Roles & Preconfigured Accounts
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('admin@datapulse.ai', 'AdminSecure2026!')}
-                className="py-1.5 px-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-[10px] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/50 text-center transition-colors font-medium"
-              >
-                Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('engineer@datapulse.ai', 'EngineerSecure2026!')}
-                className="py-1.5 px-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-[10px] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/50 text-center transition-colors font-medium"
-              >
-                Data Eng
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickDemo('viewer@datapulse.ai', 'ViewerSecure2026!')}
-                className="py-1.5 px-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800/60 dark:hover:bg-zinc-800 text-[10px] text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700/50 text-center transition-colors font-medium"
-              >
-                Viewer
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Footer switcher */}
